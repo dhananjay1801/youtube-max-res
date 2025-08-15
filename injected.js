@@ -1,6 +1,7 @@
 (() => {
   let enabled = true;
   let target = 'highres';
+  let userOverrideActive = false;
   const order = ['highres','hd2880','hd2160','hd1440','hd1080','hd720','large','medium','small','tiny'];
 
   function getPlayer() {
@@ -28,7 +29,7 @@
   }
 
   function applyOnce() {
-    if (!enabled) return;
+    if (!enabled || userOverrideActive) return;
     const p = getPlayer();
     if (!p) return;
     const levels = (p.getAvailableQualityLevels && p.getAvailableQualityLevels()) || [];
@@ -52,10 +53,19 @@
     if (!v) return;
     v.addEventListener('loadeddata', burst, { passive: true });
     v.addEventListener('playing', burst, { passive: true });
+    v.addEventListener('ratechange', () => {}, { passive: true });
+    // Detect manual user quality change by observing yt player quality changes
+    const p = getPlayer();
+    if (p && typeof p.addEventListener === 'function') {
+      try {
+        p.addEventListener('onPlaybackQualityChange', () => { userOverrideActive = true; }, { passive: true });
+      } catch {}
+    }
   }
 
   function onNavigate() {
     if (!enabled) return;
+    userOverrideActive = false;
     applyOnce();
     burst();
     onVideoAttach();
@@ -70,6 +80,11 @@
     if (m.type === 'YTMQ_INIT' || m.type === 'YTMQ_UPDATE') {
       if (typeof m.enabled === 'boolean') enabled = m.enabled;
       if (typeof m.target === 'string') target = m.target;
+      if (typeof m.enabled === 'boolean' && m.enabled) {
+        // when re-enabled from popup, clear user override and apply
+        userOverrideActive = false;
+        applyOnce();
+      }
       if (m.type === 'YTMQ_INIT') onNavigate();
     }
   });
